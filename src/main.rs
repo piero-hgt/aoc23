@@ -1,5 +1,6 @@
 mod day01;
+mod day02;
 
 fn main() {
-    day01::solve_task2();
+    day02::solve_task2();
 }

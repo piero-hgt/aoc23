@@ -2,7 +2,7 @@ use std::fs;
 use std::collections::HashMap;
 
 pub fn solve_task1() {
-    let contents = match fs::read_to_string("input/day01task1.txt") {
+    let contents = match fs::read_to_string("input/day01.txt") {
         Ok(contents) => contents,
         Err(e) => panic!("{}", e),
     };
@@ -11,7 +11,7 @@ pub fn solve_task1() {
 }
 
 pub fn solve_task2() {
-    let contents = match fs::read_to_string("input/day01task1.txt") {
+    let contents = match fs::read_to_string("input/day01.txt") {
         Ok(contents) => contents,
         Err(e) => panic!("{}", e),
     };
