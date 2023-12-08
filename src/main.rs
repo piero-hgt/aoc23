@@ -4,5 +4,5 @@ mod day03;
 mod day04;
 
 fn main() {
-    day04::solve_task1();
+    day04::solve_task2();
 }
