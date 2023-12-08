@@ -1,6 +1,7 @@
-use std::{collections::HashMap, panic::Location};
 use text_io::scan;
 use std::fs;
+use std::ops::Range;
+use rayon::prelude::*;
 
 #[derive(Debug)]
 enum AlmanacStep {
@@ -15,13 +16,13 @@ enum AlmanacStep {
 }
 
 #[derive(Debug, PartialEq)]
-struct Range {
+struct MapRange {
     min: u64,
     max: u64,
     add: i64,
 }
 
-impl Range {
+impl MapRange {
     fn new(line: &str) -> Self {
         let line = line.trim();
 
@@ -35,25 +36,34 @@ impl Range {
         let s_start = s_start.parse::<u64>().unwrap();
         let length = length.parse::<u64>().unwrap();
 
-        println!("Range: d_start {}, s_start {}, length {}", d_start, s_start, length);
         let min = s_start;
         let max = s_start + length - 1;
         let add = d_start as i64 - s_start as i64;
 
-        println!("Range for \"{}\": min {}, max {}, add {}", line, min, max, add);
-
-        Range { min, max, add }
+        MapRange { min, max, add }
     }
 }
 
 #[derive(Debug)]
-struct RangeSet {
-    ranges: Vec<Range>,
+struct SeedRange {
+    min: u64,
+    max: u64,
 }
 
-impl RangeSet {
+impl SeedRange {
+    fn get_range(&self) -> Range<u64> {
+        self.min..self.max
+    }
+}
+
+#[derive(Debug)]
+struct MapRangeSet {
+    ranges: Vec<MapRange>,
+}
+
+impl MapRangeSet {
     fn new() -> Self {
-        RangeSet { ranges: Vec::new() }
+        MapRangeSet { ranges: Vec::new() }
     }
 
     fn find_destination(&self, value: u64) -> u64 {
@@ -69,27 +79,27 @@ impl RangeSet {
 
 #[derive(Debug)]
 struct Almanac {
-    seeds: Vec<u64>,
-    seeds_to_soil: RangeSet,
-    soil_to_fertilizer: RangeSet,
-    fertilizer_to_water: RangeSet,
-    water_to_light: RangeSet,
-    light_to_temperature: RangeSet,
-    temperature_to_humidity: RangeSet,
-    humidity_to_location: RangeSet,
+    seeds: Vec<SeedRange>,
+    seeds_to_soil: MapRangeSet,
+    soil_to_fertilizer: MapRangeSet,
+    fertilizer_to_water: MapRangeSet,
+    water_to_light: MapRangeSet,
+    light_to_temperature: MapRangeSet,
+    temperature_to_humidity: MapRangeSet,
+    humidity_to_location: MapRangeSet,
 }
 
 impl Almanac {
     fn new(input: &str) -> Self {
         let mut step = AlmanacStep::Seeds;
-        let mut seeds: Vec<u64> = Vec::new();
-        let mut seeds_to_soil: RangeSet = RangeSet::new();
-        let mut soil_to_fertilizer: RangeSet = RangeSet::new();
-        let mut fertilizer_to_water: RangeSet = RangeSet::new();
-        let mut water_to_light: RangeSet = RangeSet::new();
-        let mut light_to_temperature: RangeSet = RangeSet::new();
-        let mut temperature_to_humidity: RangeSet = RangeSet::new();
-        let mut humidity_to_location: RangeSet = RangeSet::new();
+        let mut seeds: Vec<SeedRange> = Vec::new();
+        let mut seeds_to_soil: MapRangeSet = MapRangeSet::new();
+        let mut soil_to_fertilizer: MapRangeSet = MapRangeSet::new();
+        let mut fertilizer_to_water: MapRangeSet = MapRangeSet::new();
+        let mut water_to_light: MapRangeSet = MapRangeSet::new();
+        let mut light_to_temperature: MapRangeSet = MapRangeSet::new();
+        let mut temperature_to_humidity: MapRangeSet = MapRangeSet::new();
+        let mut humidity_to_location: MapRangeSet = MapRangeSet::new();
 
         for (i, line) in input.lines().enumerate() {
             if line.trim().is_empty() {
@@ -97,7 +107,18 @@ impl Almanac {
             }
 
             if i == 0 {
-                seeds = line.replace("seeds:", "").trim().split_whitespace().map(|n| n.parse::<u64>().unwrap()).collect();
+                // seeds = line.replace("seeds:", "").trim().split_whitespace().map(|n| n.parse::<u64>().unwrap()).collect();
+                let values: Vec<u64> = line.replace("seeds:", "").trim().split_whitespace().map(|n| n.parse::<u64>().unwrap()).collect();
+
+                let mut i: u64 = 0;
+
+                while i < values.len() as u64 {
+                    let min = values[i as usize];
+                    let max = min + values[(i + 1) as usize] - 1;
+                    seeds.push(SeedRange { min, max });
+                    i += 2;
+                }
+
                 continue;
             }
 
@@ -132,7 +153,7 @@ impl Almanac {
                 },
                 _ => {
                     // println!("Step {:?}", step);
-                    let range = Range::new(&line);
+                    let range = MapRange::new(&line);
 
                     match step {
                         AlmanacStep::Seeds => { }
@@ -164,17 +185,47 @@ impl Almanac {
 
         location
     }
+
+    fn find_smallest_location(&self) -> u64 {
+        let mut location = u64::MAX;
+
+        for seed_range in &self.seeds {
+            println!("Seed range {:?}", seed_range);
+
+            let mut locations: Vec<u64> = seed_range
+                .get_range()
+                .into_par_iter()
+                .map(|seed| self.find_location_for_seed(seed))
+                .collect::<Vec<u64>>();
+            locations.sort();
+            if locations[0] < location {
+                println!("New location {}", locations[0]);
+                location = locations[0];
+            }
+        }
+        location
+    }
+
+    fn get_seeds(&self) -> Vec<u64> {
+        let mut seeds: Vec<u64> = Vec::new();
+
+        for seed_range in &self.seeds {
+            for seed in seed_range.get_range() {
+                seeds.push(seed);
+            }
+        }
+
+        seeds
+    }
 }
 
-fn generate_ranges(line: &str) -> Range {
-    Range::new(line)
+fn generate_ranges(line: &str) -> MapRange {
+    MapRange::new(line)
 }
 
 fn lowest_location_number(input: &str) -> u64 {
     let almanac = Almanac::new(input);
-    let mut locations: Vec<u64> = almanac.seeds.iter().map(|seed| almanac.find_location_for_seed(*seed)).collect();
-    locations.sort();
-    locations[0]
+    almanac.find_smallest_location()
 }
 
 
@@ -194,11 +245,11 @@ mod tests {
     #[test]
     fn test_generate_ranges() {
         let input = "50 98 2";
-        let expected = Range { min: 98, max: 99, add: -48 };
+        let expected = MapRange { min: 98, max: 99, add: -48 };
         assert_eq!(generate_ranges(input), expected);
 
         let input: &str = "39 0 15";
-        let expected = Range { min: 0, max: 14, add: 39 };
+        let expected = MapRange { min: 0, max: 14, add: 39 };
         assert_eq!(generate_ranges(input), expected);
     }
 
@@ -238,6 +289,6 @@ mod tests {
         60 56 37
         56 93 4";
 
-        assert_eq!(lowest_location_number(input), 35);
+        assert_eq!(lowest_location_number(input), 46);
     }
 }
