@@ -7,5 +7,5 @@ mod day06;
 mod day07;
 
 fn main() {
-    day07::solve_task1();
+    day07::solve_task2();
 }
