@@ -39,6 +39,15 @@ impl History  {
         let step = self.next.as_ref().unwrap().get_next_history_value();
         self.sequence[self.sequence.len() - 1] + step
     }
+
+
+    fn get_previous_history_value(&self) -> i64 {
+        if self.next.is_none() {
+            return self.sequence[0];
+        }
+        let step = self.next.as_ref().unwrap().get_previous_history_value();
+        self.sequence[0] - step
+    }
 }
 
 fn get_next_history_values(input: &str) -> i64 {
@@ -46,9 +55,15 @@ fn get_next_history_values(input: &str) -> i64 {
     histories.iter().map(|h| h.get_next_history_value()).sum::<i64>()
 }
 
+fn get_previous_history_values(input: &str) -> i64 {
+    let histories: Vec<History> = input.lines().map(|s| History::new(s)).collect();
+    histories.iter().map(|h| h.get_previous_history_value()).sum::<i64>()
+}
+
 fn main() {
     let input = fs::read_to_string("input.txt").unwrap();
-    println!("{}", get_next_history_values(&input));
+    println!("next histories sum {}", get_next_history_values(&input));
+    println!("previous histories sum {}", get_previous_history_values(&input));
 }
 
 
@@ -57,7 +72,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_history() {
+    fn test_next_history() {
         let input = "0 3 6 9 12 15
         1 3 6 10 15 21
         10 13 16 21 30 45";
@@ -66,9 +81,12 @@ mod tests {
     }
 
     #[test]
-    fn test_history_neg() {
-        let input = "0 -3 -6 -9 -12 -15";
+    fn test_previous_history() {
+        let input = "0 3 6 9 12 15
+        1 3 6 10 15 21
+        10 13 16 21 30 45";
 
-        assert_eq!(get_next_history_values(input), -18);
+        assert_eq!(get_previous_history_values(input), 2);
     }
+
 }
