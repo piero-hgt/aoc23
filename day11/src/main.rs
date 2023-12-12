@@ -1,5 +1,6 @@
 use std::fs;
 use std::collections::BTreeMap;
+use std::cmp::{min, max};
 
 type Coordinates = [usize; 2];
 
@@ -7,6 +8,8 @@ type Coordinates = [usize; 2];
 struct Map {
     map: BTreeMap<Coordinates, char>,
     galaxies: Vec<Coordinates>,
+    empty_rows: Vec<u32>,
+    empty_cols: Vec<u32>,
 }
 
 impl Map {
@@ -21,130 +24,105 @@ impl Map {
                 map.insert([row, col], c);
             }
         }
-        let mut map = Map { map, galaxies };
-        map.expand();
-        map
-    }
 
-    fn expand(&mut self) {
-        self.expand_rows();
-        self.expand_cols();
-    }
-
-    fn expand_rows(&mut self) {
-        let (max, _) = self.map.iter().nth_back(0).unwrap();
-        let mut expanded: BTreeMap<Coordinates, char> = BTreeMap::new();
-        let mut new_rows = 0;
-
-        // For each row, if only '.' => duplicate row
+        let (max, _) = map.iter().nth_back(0).unwrap();
+        let mut empty_rows: Vec<u32> = Vec::new();
         for row in 0..=max[0] {
             let mut has_galaxies = false;
             for col in 0..=max[1] {
-                let coordinates: Coordinates = [row + new_rows, col];
-                expanded.insert(coordinates, self.map[&[row, col]]);
-                if self.galaxies.contains(&[row, col]) {
+                if galaxies.contains(&[row, col]) {
                     has_galaxies = true;
+                    break
                 }
             }
             if !has_galaxies {
-                new_rows += 1;
-                for col in 0..=max[1] {
-                    let coordinates: Coordinates = [row + new_rows, col];
-                    expanded.insert(coordinates, '.');
-                }
+                empty_rows.push(row as u32);
             }
         }
-
-        let max = [max[0]+new_rows, max[1]];
-
-        // update galaxies
-        self.galaxies = Vec::new();
-        for row in 0..=max[0] {
-            for col in 0..=max[1] {
-                if expanded[&[row, col]] == '#' {
-                    self.galaxies.push([row, col]);
-                }
-            }
-        }
-
-        self.map = expanded.clone();
-    }
-
-    fn expand_cols(&mut self) {
-        let (max, _) = self.map.iter().nth_back(0).unwrap();
-        let mut expanded: BTreeMap<Coordinates, char> = BTreeMap::new();
-        let mut new_cols = 0;
-
-        // For each col, if only '.' => duplicate col
+        let mut empty_cols: Vec<u32> = Vec::new();
         for col in 0..=max[1] {
             let mut has_galaxies = false;
             for row in 0..=max[0] {
-                let coordinates: Coordinates = [row, col+new_cols];
-                expanded.insert(coordinates, self.map[&[row, col]]);
-                if self.galaxies.contains(&[row, col]) {
+                if galaxies.contains(&[row, col]) {
                     has_galaxies = true;
+                    break;
                 }
             }
             if !has_galaxies {
-                new_cols += 1;
-                for row in 0..=max[0] {
-                    let coordinates: Coordinates = [row, col+new_cols];
-                    expanded.insert(coordinates, '.');
-                }
+                empty_cols.push(col as u32);
             }
         }
 
-        let max = [max[0], max[1]+new_cols];
-        // New galaxies
-        self.galaxies = Vec::new();
-        for row in 0..=max[0] {
-            for col in 0..=max[1] {
-                if expanded[&[row, col]] == '#' {
-                    self.galaxies.push([row, col]);
-                }
-            }
-        }
-
-        self.map = expanded.clone();
+        Map { map, galaxies, empty_rows, empty_cols }
     }
 
-    fn print_expanded(&self) {
-        let (max, _) = self.map.iter().nth_back(0).unwrap();
-        let mut galaxy = 1;
-        for row in 0..=max[0] {
-            for col in 0..=max[1] {
-                if self.galaxies.contains(&[row, col]) {
-                    print!("{}", galaxy);
-                    galaxy += 1;
-                } else {
-                    print!("{}", self.map[&[row, col]]);
-                }
-            }
-            println!();
-        }
-    }
-
-    fn find_distance_between(&self, a: usize, b: usize) -> usize {
+    fn find_distance_between(&self, a: usize, b: usize, expand: usize) -> usize {
         let a = self.galaxies[a];
         let b = self.galaxies[b];
 
-        let x = if a[0] < b[0] {
-            b[0] - a[0]
-        } else {
-            a[0] - b[0]
-        };
+        let min_row = min(a[0], b[0]);
+        let max_row = max(a[0], b[0]);
+        let min_col = min(a[1], b[1]);
+        let max_col = max(a[1], b[1]);
 
-        let y = if a[1] < b[1] {
-            b[1] - a[1]
-        } else {
-            a[1] - b[1]
-        };
+        let mut distance: usize = 0;
+        let mut empty_rows: usize = 0;
+        for row in (min_row+1)..=max_row {
+            if self.empty_rows.contains(&(row as u32)) {
+                empty_rows += 1;
+            } else {
+                distance += 1;
+            }
+        }
+        distance += empty_rows * expand;
 
-        x + y
+        let mut empty_cols = 0;
+        for col in (min_col+1)..=max_col {
+            if self.empty_cols.contains(&(col as u32)) {
+                empty_cols += 1;
+            } else {
+                distance += 1;
+            }
+        }
+        distance += empty_cols * expand;
+        distance
     }
 }
 
 fn main() {
+    task2();
+}
+
+fn task1() {
+    // let input = fs::read_to_string("input.txt").unwrap();
+    let input =
+   "...#......
+    .......#..
+    #.........
+    ..........
+    ......#...
+    .#........
+    .........#
+    ..........
+    .......#..
+    #...#.....";
+
+    let mut map = Map::new(&input);
+
+    // println!("distance between 1 and 2 with expand=1 : {}", map.find_distance_between(0, 1, 1));
+    let mut sum = 0;
+    for a in 0..map.galaxies.len()-1 {
+        for b in a+1..map.galaxies.len() {
+            let distance = map.find_distance_between(a, b, 1) as u32;
+            sum += distance;
+            // println!("{} to {} : {}", a+1, b+1, distance);
+        }
+    }
+    println!("Sum: {}", sum);
+}
+
+fn task2() {
+    let input = fs::read_to_string("input.txt").unwrap();
 //     let input =
 //    "...#......
 //     .......#..
@@ -156,15 +134,13 @@ fn main() {
 //     ..........
 //     .......#..
 //     #...#.....";
-    let input = fs::read_to_string("input.txt").unwrap();
 
-    let map = Map::new(&input);
-    map.print_expanded();
+    let mut map = Map::new(&input);
 
-    let mut sum = 0;
+    let mut sum: usize = 0;
     for a in 0..map.galaxies.len()-1 {
         for b in a+1..map.galaxies.len() {
-            let distance = map.find_distance_between(a, b) as u32;
+            let distance = map.find_distance_between(a, b, 1_000_000);
             sum += distance;
             // println!("{} to {} : {}", a+1, b+1, distance);
         }
