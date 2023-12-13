@@ -21,7 +21,15 @@ impl Pattern {
     }
 
     fn is_reflection_line(i: usize, r: &Vec<Vec<char>>) -> bool {
-        (0..i.min(r.len() - i)).all(|idx| r[i - idx - 1] == r[i + idx])
+        (0..i.min(r.len() - i))
+            .all(|idx| r[i - idx - 1] == r[i + idx])
+    }
+
+    fn is_reflection_line_with_smudge(i: usize, r: &Vec<Vec<char>>) -> bool {
+        (0..i.min(r.len() - i))
+            .map(|idx| r[i - idx - 1].iter().zip(r[i + idx].iter())
+            .filter(|(a, b)| a != b)
+            .count()).sum::<usize>() == 1
     }
 }
 
@@ -30,11 +38,11 @@ fn parse_patterns(input: &str) -> Vec<Pattern> {
 }
 
 fn main() {
-
+    task2();
 }
 
 fn task1() {
-        // let input = "#.##..##.
+    // let input = "#.##..##.
     // ..#.##.#.
     // ##......#
     // ##......#
@@ -60,6 +68,42 @@ fn task1() {
             .unwrap_or_default();
         let v = (1..p.cols.len())
             .skip_while(|&i| !Pattern::is_reflection_line(i, &p.cols))
+            .next()
+            .unwrap_or_default();
+
+        sum += v + 100*h;
+    }
+    println!("{}", sum);
+}
+
+
+fn task2() {
+    // let input = "#.##..##.
+    // ..#.##.#.
+    // ##......#
+    // ##......#
+    // ..#.##.#.
+    // ..##..##.
+    // #.#.##.#.
+
+    // #...##..#
+    // #....#..#
+    // ..##..###
+    // #####.##.
+    // #####.##.
+    // ..##..###
+    // #....#..#";
+    let input = include_str!("../input.txt");
+
+    let patterns = parse_patterns(&input);
+    let mut sum = 0;
+    for (i, p) in patterns.iter().enumerate() {
+        let h = (1..p.rows.len())
+            .skip_while(|&i| !Pattern::is_reflection_line_with_smudge(i, &p.rows))
+            .next()
+            .unwrap_or_default();
+        let v = (1..p.cols.len())
+            .skip_while(|&i| !Pattern::is_reflection_line_with_smudge(i, &p.cols))
             .next()
             .unwrap_or_default();
 
