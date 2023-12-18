@@ -1,8 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BinaryHeap};
+use rayon::prelude::*;
 
 type Coordinates = [usize; 2];
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
 enum Direction {
     Up,
     Down,
@@ -10,11 +11,43 @@ enum Direction {
     Left,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+enum CellType {
+    Dot,
+    Pipe,
+    Dash,
+    Slash,
+    BackSlash
+}
+
+impl CellType {
+    fn try_from_char(c: char) -> CellType {
+        match c {
+            '.' => CellType::Dot,
+            '|' => CellType::Pipe,
+            '-' => CellType::Dash,
+            '/' => CellType::Slash,
+            '\\' => CellType::BackSlash,
+            _ => unreachable!("unknown char"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+struct QueueItem {
+    coordinates: Coordinates,
+    direction: Direction,
+}
+
+#[derive(Debug, Clone)]
+struct Cell {
+    c: CellType,
+    beams: Vec<Direction>,
+}
+
+#[derive(Debug, Clone)]
 struct Map {
-    items: BTreeMap<Coordinates, char>,
-    beams: BTreeMap<Coordinates, Vec<Direction>>,
-    energized: BTreeMap<Coordinates, Vec<Direction>>,
+    items: BTreeMap<Coordinates, Cell>,
 }
 
 impl Map {
@@ -22,54 +55,47 @@ impl Map {
         let mut items = BTreeMap::new();
         for (y, line) in input.lines().enumerate() {
             for (x, c) in line.trim().chars().enumerate() {
-                items.insert([x, y], c);
+                items.insert([x, y], Cell { c: CellType::try_from_char(c), beams: vec![] });
             }
         }
-        Self { items, beams: BTreeMap::new(), energized: BTreeMap::new() }
+        Self { items }
     }
 
-    fn walk(&mut self) {
-        self.beams.insert([0, 0], vec![Direction::Right]);
-        self.light_in([0, 0], Direction::Right);
-    }
+    fn walk(&mut self, coordinates: Coordinates, direction: Direction) {
+        let mut queue: BinaryHeap<QueueItem> = BinaryHeap::new();
 
-    fn light_in(&mut self, coordinates: Coordinates, direction: Direction) {
-        // println!("light in : going {:?} to ({}, {})", direction, coordinates[0], coordinates[1]);
-        self.energize(&coordinates, &direction);
+        queue.push(QueueItem { coordinates, direction });
+        while let Some(item) = queue.pop() {
+            let (coordinates, direction) = (item.coordinates, item.direction);
+            // println!("({}, {}) -> {:?}", coordinates[0], coordinates[1], direction);
 
-        if let Some(c) = self.items.clone().get(&coordinates) {
-            match c {
-                '.' => {
-                    if let Some(new) = self.new_coordinates(coordinates, &direction) {
-                        self.light_in(new, direction);
-                    }
-                },
-                '/' | '\\' => {
-                    let new_direction = Self::new_direction(*c, direction);
-                    if let Some(new) = self.new_coordinates(coordinates, &new_direction) {
-                        self.light_in(new, new_direction);
-                    }
-                },
-                '|' | '-' => {
-                    for d in Self::split_direction(*c, direction) {
-                        if let Some(new) = self.new_coordinates(coordinates, &d) {
-                            match self.beams.get_mut(&new) {
-                                Some(b) => {
-                                    // dbg!(&b, &d);
-                                    if b.contains(&d) {
-                                        return;
+            if self.already_energized(&coordinates, &direction) {
+                // println!("already energized ({}, {}) -> {:?}", coordinates[0], coordinates[1], direction);
+                continue;
+            }
+            self.energize(&coordinates, &direction);
+
+            if let Some(cell) = self.items.get(&coordinates) {
+                match cell.c {
+                    CellType::Pipe | CellType::Dash => {
+                        for d in Self::split_direction(cell.c, direction) {
+                            if let Some(new) = self.new_coordinates(coordinates, &d) {
+                                if let Some(new_cell) = self.items.get(&new) {
+                                    if new_cell.beams.contains(&d) {
+                                        continue;
                                     }
-                                    b.push(d.clone());
-                                },
-                                None => {
-                                    self.beams.insert(new, vec![d.clone()]);
                                 }
+                                queue.push(QueueItem { coordinates: new, direction: d });
                             }
-                            self.light_in(new, d);
+                        }
+                    },
+                    _ => {
+                        let new_direction = Self::new_direction(cell.c, direction);
+                        if let Some(new) = self.new_coordinates(coordinates, &new_direction) {
+                            queue.push(QueueItem { coordinates: new, direction: new_direction });
                         }
                     }
-                },
-                _ => {}
+                }
             }
         }
     }
@@ -84,9 +110,9 @@ impl Map {
         }
     }
 
-    fn new_direction(c: char, direction: Direction) -> Direction {
+    fn new_direction(c: CellType, direction: Direction) -> Direction {
         match c {
-            '/' => {
+            CellType::Slash  => {
                 match direction {
                     Direction::Up => Direction::Right,
                     Direction::Down => Direction::Left,
@@ -94,7 +120,7 @@ impl Map {
                     Direction::Left => Direction::Down,
                 }
             },
-            '\\' => {
+            CellType::BackSlash => {
                 match direction {
                     Direction::Up => Direction::Left,
                     Direction::Down => Direction::Right,
@@ -106,15 +132,15 @@ impl Map {
         }
     }
 
-    fn split_direction(c: char, direction: Direction) -> Vec<Direction> {
+    fn split_direction(c: CellType, direction: Direction) -> Vec<Direction> {
         match c {
-            '|' => {
+            CellType::Pipe => {
                 if direction == Direction::Up || direction == Direction::Down {
                     return vec![direction];
                 }
                 return vec![Direction::Up, Direction::Down];
             },
-            '-' => {
+            CellType::Dash => {
                 if direction == Direction::Right || direction == Direction::Left {
                     return vec![direction];
                 }
@@ -125,13 +151,21 @@ impl Map {
     }
 
     fn energize(&mut self, coordinates: &Coordinates, direction: &Direction) {
-        if let Some(v) = self.energized.get_mut(coordinates) {
-            if v.contains(&direction) {
-                println!("already energized : ({}, {})", coordinates[0], coordinates[1]);
-            }
-        } else {
-            self.energized.insert(*coordinates, vec![*direction]);
+        if let Some(cell) = self.items.get_mut(coordinates) {
+            cell.beams.push(direction.clone());
         }
+    }
+
+    fn already_energized(&self, coordinates: &Coordinates, direction: &Direction) -> bool {
+        if let Some(cell) = self.items.get(coordinates) {
+            cell.beams.contains(&direction)
+        } else {
+            false
+        }
+    }
+
+    fn get_energized(&self) -> usize {
+        self.items.iter().filter(|(_, c)| c.beams.len() > 0).count()
     }
 }
 
@@ -149,12 +183,54 @@ fn task1() {
     let input = include_str!("../input.txt");
 
     let mut map = Map::new(&input);
-    // dbg!(&map.items);
-    map.walk();
-    println!("{}", &map.energized.iter().count());
+    map.walk([0, 0], Direction::Right);
+    println!("{}", &map.get_energized());
 }
 
+fn task2() {
+    // let input = ".|...\\....
+    // |.-.\\.....
+    // .....|-...
+    // ........|.
+    // ..........
+    // .........\\
+    // ..../.\\\\..
+    // .-.-/..|..
+    // .|....-|.\\
+    // ..//.|....";
+    let input = include_str!("../input.txt");
+
+    let map = Map::new(&input);
+
+    let run_it = |c: Coordinates, d: Direction| -> usize {
+        let mut cloned = map.clone();
+        println!("Walk from ({}, {}) -> {:?}", c[0], c[1], d);
+        cloned.walk(c, d);
+
+        let current = cloned.get_energized();
+        println!("({}, {}) -> {:?} : {}", c[0], c[1], d, current);
+
+        current
+    };
+
+    let height = map.items.keys().map(|c| c[0]).max().unwrap();
+    let width = map.items.keys().map(|c| c[1]).max().unwrap();
+
+    let max_v = (0..=width).into_par_iter().map(|x| {
+        let down = run_it([x, 0], Direction::Down);
+        let up = run_it([x, height], Direction::Up);
+        down.max(up)
+    }).max();
+
+    let max_h = (0..=height).into_par_iter().map(|y| {
+        let right = run_it([0, y], Direction::Right);
+        let left = run_it([width, y], Direction::Left);
+        right.max(left)
+    }).max();
+
+    println!("best is {}", max_v.max(max_h).unwrap());
+}
 
 fn main() {
-    task1();
+    task2();
 }
